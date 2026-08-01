@@ -34,14 +34,20 @@ than inventing a second one from scratch.
 
 ## Status
 
-Stub only -- folder structure and build scaffolding in place, no
-gameplay yet. Not yet a git repository; init and push when ready to
-start real work.
+First playable core loop is in: dig from the mothership into a
+procedurally generated asteroid, manage O2/fuel, bank ore, and get back
+before you run out. Hazards implemented: fracture cave-ins, deep heat
+vents, and a timed surface vent gate guarding the way back. All gameplay
+lives in GDScript under `godot/scripts/`; the C++ GDExtension (`src/`)
+is still an empty stub, reserved for later if procedural generation
+needs to get heavier.
 
-## Getting started (once real work begins)
+## Getting started
 
-1. `git init`, then add `godot-cpp` as a submodule (see `SConstruct`
-   for the expected layout -- same pattern as Aevoria Simulator's
-   `.gitmodules`).
-2. `scons` to build the GDExtension into `godot/bin/`.
-3. Open `godot/project.godot` in Godot 4.
+1. `git submodule update --init` to pull in `godot-cpp` (already added
+   as a submodule -- see `.gitmodules`).
+2. `scons platform=<windows|linux|macos> target=template_debug` to
+   build the GDExtension into `godot/bin/` (currently a stub, but
+   required for the project to open without errors).
+3. Open `godot/project.godot` in Godot 4.6 and run -- `main.tscn` is
+   the main scene.
