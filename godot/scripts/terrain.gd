@@ -4,6 +4,7 @@ class_name Terrain
 const Constants = preload("res://scripts/constants.gd")
 const FallingRock = preload("res://scripts/falling_rock.gd")
 const HeatVent = preload("res://scripts/heat_vent.gd")
+const LevelConfig = preload("res://scripts/levels/level_config.gd")
 
 # Procedurally generated asteroid body. Sparse grid dictionary (rather than a
 # fixed array) since most gameplay-relevant lookups are near the player, not
@@ -14,8 +15,10 @@ signal collapse_triggered(cell: Vector2i)
 var grid: Dictionary = {}
 var collapsing: Dictionary = {}
 var rng := RandomNumberGenerator.new()
+var config: LevelConfig
 
-func generate(seed_value: int) -> void:
+func generate(seed_value: int, level_config: LevelConfig) -> void:
+    config = level_config
     rng.seed = seed_value
     tile_set = _build_tile_set()
     grid.clear()
@@ -24,7 +27,7 @@ func generate(seed_value: int) -> void:
 
     var noise := FastNoiseLite.new()
     noise.seed = seed_value
-    noise.frequency = 0.07
+    noise.frequency = config.noise_frequency
     noise.fractal_octaves = 3
 
     for y in range(Constants.SURFACE_ROW, Constants.GRID_HEIGHT):
@@ -40,17 +43,42 @@ func generate(seed_value: int) -> void:
             if noise.get_noise_2d(x, y) > 0.35:
                 continue # natural cave pocket -- left empty
 
-            if rng.randf() < lerp(0.02, 0.09, depth_t):
-                _set_tile(cell, Constants.Tile.ORE)
-            elif rng.randf() < 0.05:
-                _set_tile(cell, Constants.Tile.CRACKED)
-            elif depth_t > 0.35 and rng.randf() < lerp(0.0, 0.05, (depth_t - 0.35) / 0.65):
-                _set_tile(cell, Constants.Tile.HEAT_CORE)
+            var t := _roll_tile_type(depth_t)
+            _set_tile(cell, t)
+            if t == Constants.Tile.HEAT_CORE:
                 _spawn_heat_vent(cell)
-            else:
-                _set_tile(cell, Constants.Tile.ROCK)
 
     _carve_landing_shaft()
+
+func _roll_tile_type(depth_t: float) -> int:
+    var roll := rng.randf()
+
+    var p_gold: float = lerp(0.015, 0.045, depth_t)
+    if roll < p_gold:
+        return Constants.Tile.GOLD_ORE
+    roll -= p_gold
+
+    var p_nickel: float = lerp(0.02, 0.05, depth_t)
+    if roll < p_nickel:
+        return Constants.Tile.NICKEL_ORE
+    roll -= p_nickel
+
+    var p_fuel: float = lerp(0.008, 0.035, depth_t)
+    if roll < p_fuel:
+        return Constants.Tile.FUEL_ORE
+    roll -= p_fuel
+
+    var p_cracked := 0.05 * config.hazard_density
+    if roll < p_cracked:
+        return Constants.Tile.CRACKED
+    roll -= p_cracked
+
+    if depth_t > 0.35:
+        var p_heat: float = lerp(0.0, 0.05, (depth_t - 0.35) / 0.65) * config.hazard_density
+        if roll < p_heat:
+            return Constants.Tile.HEAT_CORE
+
+    return Constants.Tile.ROCK
 
 func get_spawn_world_pos() -> Vector2:
     return map_to_local(Vector2i(Constants.GRID_WIDTH / 2, Constants.SURFACE_ROW - 1))
@@ -69,7 +97,7 @@ func is_solid(cell: Vector2i) -> bool:
 
 func is_diggable(cell: Vector2i) -> bool:
     var t := get_tile(cell)
-    return t == Constants.Tile.ROCK or t == Constants.Tile.ORE or t == Constants.Tile.CRACKED or t == Constants.Tile.HEAT_CORE
+    return t != Constants.Tile.EMPTY and t != Constants.Tile.BEDROCK
 
 func fill_rubble(cell: Vector2i) -> void:
     if get_tile(cell) == Constants.Tile.EMPTY:
@@ -77,7 +105,7 @@ func fill_rubble(cell: Vector2i) -> void:
 
 func dig(cell: Vector2i, digger: Node) -> void:
     var t := get_tile(cell)
-    if t == Constants.Tile.EMPTY or not is_diggable(cell):
+    if not is_diggable(cell):
         return
     var was_heat_core := t == Constants.Tile.HEAT_CORE
     _clear_tile(cell)
@@ -130,16 +158,22 @@ func _clear_tile(cell: Vector2i) -> void:
     erase_cell(cell)
 
 func _build_tile_set() -> TileSet:
+    # Index order must match Constants.Tile's atlas-coordinate values.
     var colors := [
-        Color(0.34, 0.32, 0.32), # ROCK
-        Color(0.86, 0.69, 0.16), # ORE
-        Color(0.56, 0.36, 0.2),  # CRACKED
-        Color(0.86, 0.26, 0.1),  # HEAT_CORE
-        Color(0.16, 0.16, 0.18), # BEDROCK
+        config.rock_color,
+        config.gold_color,
+        config.nickel_color,
+        config.fuel_ore_color,
+        config.cracked_color,
+        config.heat_color,
+        config.bedrock_color,
+    ]
+    var glinted := [
+        false, true, true, true, false, false, false,
     ]
     var img := Image.create_empty(Constants.CELL_SIZE * colors.size(), Constants.CELL_SIZE, false, Image.FORMAT_RGBA8)
     for i in range(colors.size()):
-        _paint_tile(img, i, colors[i])
+        _paint_tile(img, i, colors[i], glinted[i])
     var tex := ImageTexture.create_from_image(img)
 
     var ts := TileSet.new()
@@ -164,7 +198,7 @@ func _build_tile_set() -> TileSet:
         data.set_collision_polygon_points(0, 0, poly)
     return ts
 
-func _paint_tile(img: Image, index: int, base: Color) -> void:
+func _paint_tile(img: Image, index: int, base: Color, glinted: bool) -> void:
     var ox := index * Constants.CELL_SIZE
     var tile_rng := RandomNumberGenerator.new()
     tile_rng.seed = index * 977 + 13
@@ -176,3 +210,12 @@ func _paint_tile(img: Image, index: int, base: Color) -> void:
     for i in range(Constants.CELL_SIZE):
         img.set_pixel(ox, i, base.darkened(0.35))
         img.set_pixel(ox + i, 0, base.darkened(0.35))
+
+    if glinted:
+        # A handful of bright glint specks so ore reads clearly against
+        # the deliberately plain, flat regolith.
+        var glint_count := 7
+        for _i in range(glint_count):
+            var gx := tile_rng.randi_range(3, Constants.CELL_SIZE - 4)
+            var gy := tile_rng.randi_range(3, Constants.CELL_SIZE - 4)
+            img.set_pixel(ox + gx, gy, base.lightened(0.65))

@@ -7,9 +7,12 @@ const Terrain = preload("res://scripts/terrain.gd")
 # Thruster-controlled mining rig. Moves like a light lander (gravity +
 # directional thrust) rather than a platformer -- fits digging in every
 # direction, and running dry on fuel means losing control, not stopping dead.
+# The rig always rotates to face wherever you're pushing, and the drill nose
+# only bites rock while the left mouse button is held -- movement alone no
+# longer digs.
 
 signal died(reason: String)
-signal cargo_banked(value: int, count: int)
+signal cargo_banked(credit_value: int, fuel_ore: int, gold: int, nickel: int)
 
 const GRAVITY := 260.0
 const THRUST_ACCEL := 620.0
@@ -21,29 +24,31 @@ const FRICTION := 340.0
 const DIG_RATE := 2.4
 const DIG_RATE_CRACKED_MULT := 1.6
 const DIG_REACH := 20.0
-const FUEL_DIG_COST := 2.5
 
 const FUEL_MAX := 100.0
 const O2_MAX := 100.0
-const FUEL_THRUST_DRAIN := 11.0
-const O2_DRAIN := 2.6
+const FUEL_THRUST_DRAIN := 0.35  # per second while any thruster fires (includes digging pushes)
+const O2_DRAIN := 0.15           # per second, passive -- tuned for ~10-11 min per dive
 const DOCK_REFILL_RATE := 60.0
 
 var terrain: Terrain = null
 
 var fuel := FUEL_MAX
 var o2 := O2_MAX
-var cargo_count := 0
-var cargo_value := 0
+var cargo_gold := 0
+var cargo_nickel := 0
+var cargo_fuel_ore := 0
+var cargo_credit_value := 0
 var docked := false
 var alive := true
 var heat_drain := 0.0
 
 var dig_progress := 0.0
 var dig_target := Vector2i(-99999, -99999)
+var facing_angle := 0.0
 
-var body_poly: Polygon2D
 var flame_poly: Polygon2D
+var drill_poly: Polygon2D
 
 func _ready() -> void:
     add_to_group("player")
@@ -58,21 +63,21 @@ func _ready() -> void:
     shape.shape = rect
     add_child(shape)
 
-    body_poly = Polygon2D.new()
+    var body_poly := Polygon2D.new()
     body_poly.color = Color(0.78, 0.82, 0.86)
     body_poly.polygon = PackedVector2Array([
         Vector2(-11, -9), Vector2(11, -9), Vector2(11, 9), Vector2(-11, 9),
     ])
     add_child(body_poly)
 
-    var drill := Polygon2D.new()
-    drill.color = Color(0.92, 0.58, 0.18)
-    drill.polygon = PackedVector2Array([Vector2(11, -6), Vector2(19, 0), Vector2(11, 6)])
-    add_child(drill)
+    drill_poly = Polygon2D.new()
+    drill_poly.color = Color(0.92, 0.58, 0.18)
+    drill_poly.polygon = PackedVector2Array([Vector2(11, -6), Vector2(19, 0), Vector2(11, 6)])
+    add_child(drill_poly)
 
     flame_poly = Polygon2D.new()
     flame_poly.color = Color(1.0, 0.65, 0.2, 0.9)
-    flame_poly.polygon = PackedVector2Array([Vector2(-7, 9), Vector2(7, 9), Vector2(0, 18)])
+    flame_poly.polygon = PackedVector2Array([Vector2(-11, -6), Vector2(-19, 0), Vector2(-11, 6)])
     flame_poly.visible = false
     add_child(flame_poly)
 
@@ -81,10 +86,11 @@ func _physics_process(delta: float) -> void:
         velocity = Vector2.ZERO
         return
 
-    var input_dir := _read_input()
+    var input_dir := _read_move_input()
 
-    if input_dir.x != 0.0:
-        body_poly.scale.x = 1.0 if input_dir.x > 0 else -1.0
+    if input_dir != Vector2.ZERO:
+        facing_angle = input_dir.angle()
+    rotation = facing_angle
 
     var thrust_active := false
     if fuel > 0.0:
@@ -107,11 +113,13 @@ func _physics_process(delta: float) -> void:
         velocity.y += GRAVITY * delta
 
     velocity.y = clamp(velocity.y, -MAX_SPEED, MAX_SPEED * 1.4)
-    flame_poly.visible = thrust_active and input_dir.y < 0.0
+    flame_poly.visible = thrust_active
 
     move_and_slide()
 
-    _handle_digging(input_dir, delta)
+    var digging := _handle_digging(input_dir, delta)
+    drill_poly.color = Color(1.0, 0.35, 0.1) if digging else Color(0.92, 0.58, 0.18)
+
     _tick_resources(delta, thrust_active)
 
     if docked:
@@ -120,7 +128,7 @@ func _physics_process(delta: float) -> void:
     elif o2 <= 0.0:
         hit_by_hazard("ran out of oxygen")
 
-func _read_input() -> Vector2:
+func _read_move_input() -> Vector2:
     var d := Vector2.ZERO
     if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
         d.x -= 1.0
@@ -132,18 +140,19 @@ func _read_input() -> Vector2:
         d.y += 1.0
     return d
 
-func _handle_digging(input_dir: Vector2, delta: float) -> void:
-    if input_dir == Vector2.ZERO or terrain == null or fuel <= 0.0:
+func _handle_digging(input_dir: Vector2, delta: float) -> bool:
+    var lmb_held := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+    if not lmb_held or input_dir == Vector2.ZERO or terrain == null or fuel <= 0.0:
         dig_progress = 0.0
         dig_target = Vector2i(-99999, -99999)
-        return
+        return false
 
     var probe_world := global_position + input_dir.normalized() * DIG_REACH
     var cell := terrain.local_to_map(terrain.to_local(probe_world))
     if not terrain.is_diggable(cell):
         dig_progress = 0.0
         dig_target = Vector2i(-99999, -99999)
-        return
+        return false
 
     if cell != dig_target:
         dig_target = cell
@@ -158,11 +167,17 @@ func _handle_digging(input_dir: Vector2, delta: float) -> void:
         dig_progress = 0.0
         var tile_before := terrain.get_tile(cell)
         terrain.dig(cell, self)
-        if tile_before == Constants.Tile.ORE:
-            var depth_m := terrain.depth_meters(cell)
-            cargo_count += 1
-            cargo_value += int(10 + depth_m * 0.6)
-        fuel = max(0.0, fuel - FUEL_DIG_COST)
+        var depth_m := terrain.depth_meters(cell)
+        match tile_before:
+            Constants.Tile.GOLD_ORE:
+                cargo_gold += 1
+                cargo_credit_value += int(14 + depth_m * 0.8)
+            Constants.Tile.NICKEL_ORE:
+                cargo_nickel += 1
+                cargo_credit_value += int(6 + depth_m * 0.3)
+            Constants.Tile.FUEL_ORE:
+                cargo_fuel_ore += 1
+    return true
 
 func _tick_resources(delta: float, thrust_active: bool) -> void:
     if docked:
@@ -178,10 +193,12 @@ func _tick_resources(delta: float, thrust_active: bool) -> void:
 func set_docked(is_docked: bool) -> void:
     var was_docked := docked
     docked = is_docked
-    if is_docked and not was_docked and cargo_count > 0:
-        cargo_banked.emit(cargo_value, cargo_count)
-        cargo_count = 0
-        cargo_value = 0
+    if is_docked and not was_docked and (cargo_gold > 0 or cargo_nickel > 0 or cargo_fuel_ore > 0):
+        cargo_banked.emit(cargo_credit_value, cargo_fuel_ore, cargo_gold, cargo_nickel)
+        cargo_gold = 0
+        cargo_nickel = 0
+        cargo_fuel_ore = 0
+        cargo_credit_value = 0
 
 func enter_heat(rate: float) -> void:
     heat_drain += rate
@@ -195,3 +212,18 @@ func hit_by_hazard(reason: String) -> void:
     alive = false
     velocity = Vector2.ZERO
     died.emit(reason)
+
+func respawn_at(spawn_pos: Vector2) -> void:
+    global_position = spawn_pos
+    rotation = 0.0
+    facing_angle = 0.0
+    velocity = Vector2.ZERO
+    fuel = FUEL_MAX
+    o2 = O2_MAX
+    heat_drain = 0.0
+    cargo_gold = 0
+    cargo_nickel = 0
+    cargo_fuel_ore = 0
+    cargo_credit_value = 0
+    dig_progress = 0.0
+    alive = true

@@ -2,7 +2,6 @@
 .godot/
 godot/.godot/
 *.translation
-export_presets.cfg
 
 # GDExtension / SCons build artifacts
 *.exe

@@ -8,4 +8,5 @@ const SURFACE_ROW := 5
 const GRID_DEPTH := 90
 const GRID_HEIGHT := SURFACE_ROW + GRID_DEPTH
 
-enum Tile { EMPTY = -1, ROCK = 0, ORE = 1, CRACKED = 2, HEAT_CORE = 3, BEDROCK = 4 }
+# Atlas x-coordinate order matters -- keep in sync with Terrain._build_tile_set.
+enum Tile { EMPTY = -1, ROCK = 0, GOLD_ORE = 1, NICKEL_ORE = 2, FUEL_ORE = 3, CRACKED = 4, HEAT_CORE = 5, BEDROCK = 6 }

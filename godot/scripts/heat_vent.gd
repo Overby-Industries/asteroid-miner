@@ -5,7 +5,7 @@ class_name HeatVent
 # lingering in its glow cooks the rig's air supply faster the longer you stay.
 
 const RADIUS := 88.0
-const DRAIN_PER_SEC := 26.0
+const DRAIN_PER_SEC := 6.0 # on top of passive O2 drain -- dangerous to linger, not instant
 
 func _ready() -> void:
     set_collision_layer_value(1, false)

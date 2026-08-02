@@ -1,81 +1,90 @@
 extends CanvasLayer
 class_name HUD
 
+const MiniMap = preload("res://scripts/ui/minimap.gd")
+
+# Every panel shares the same screen margin, internal padding, and
+# background style so the layout reads as one system rather than several
+# ad-hoc boxes. Add new panels through _make_panel() to keep it that way.
+
+const SCREEN_MARGIN := 16
+const PANEL_PADDING := 16
+const PANEL_BG := Color(0.05, 0.05, 0.08, 0.78)
+const PANEL_RADIUS := 6
+
 var o2_bar: ProgressBar
 var fuel_bar: ProgressBar
+var level_label: Label
+var quota_label: Label
 var cargo_label: Label
 var depth_label: Label
+
+var minimap: MiniMap
+
 var message_label: Label
 var sub_label: Label
 var game_over_box: Control
 
+var level_banner: Label
+var level_banner_box: PanelContainer
+
 func _ready() -> void:
     layer = 10
+    _build_stats_panel()
+    _build_controls_panel()
+    _build_minimap_panel()
+    _build_level_banner()
+    _build_game_over_panel()
 
-    var margin := MarginContainer.new()
-    margin.set_anchors_preset(Control.PRESET_TOP_WIDE)
-    margin.add_theme_constant_override("margin_left", 16)
-    margin.add_theme_constant_override("margin_top", 12)
-    margin.add_theme_constant_override("margin_right", 16)
-    add_child(margin)
+func _make_panel(preset: int, mode: int, custom_min: Vector2 = Vector2.ZERO) -> PanelContainer:
+    var panel := PanelContainer.new()
+    if custom_min != Vector2.ZERO:
+        panel.custom_minimum_size = custom_min
+    var style := StyleBoxFlat.new()
+    style.bg_color = PANEL_BG
+    style.set_content_margin_all(PANEL_PADDING)
+    style.set_corner_radius_all(PANEL_RADIUS)
+    panel.add_theme_stylebox_override("panel", style)
+    add_child(panel)
+    panel.set_anchors_and_offsets_preset(preset, mode, SCREEN_MARGIN)
+    return panel
 
+func _label(text: String, color := Color(1, 1, 1), size := 14) -> Label:
+    var lbl := Label.new()
+    lbl.text = text
+    lbl.add_theme_color_override("font_color", color)
+    lbl.add_theme_font_size_override("font_size", size)
+    return lbl
+
+func _build_stats_panel() -> void:
+    var panel := _make_panel(Control.PRESET_TOP_LEFT, Control.PRESET_MODE_MINSIZE)
     var vbox := VBoxContainer.new()
-    vbox.add_theme_constant_override("separation", 4)
-    margin.add_child(vbox)
+    vbox.add_theme_constant_override("separation", 6)
+    panel.add_child(vbox)
+
+    level_label = _label("LEVEL 1 -- Ashfall Rubble", Color(0.75, 0.85, 1.0), 15)
+    vbox.add_child(level_label)
+
+    quota_label = _label("Fuel ore banked 0 / 6", Color(0.6, 0.95, 0.75))
+    vbox.add_child(quota_label)
+
+    vbox.add_child(HSeparator.new())
 
     o2_bar = _make_stat_row(vbox, "O2", Color(0.3, 0.75, 1.0))
     fuel_bar = _make_stat_row(vbox, "FUEL", Color(1.0, 0.7, 0.2))
 
-    cargo_label = Label.new()
-    cargo_label.add_theme_color_override("font_color", Color(1, 1, 1))
+    cargo_label = _label("CARGO   0 gold  0 nickel  0 fuel ore")
     vbox.add_child(cargo_label)
 
-    depth_label = Label.new()
-    depth_label.add_theme_color_override("font_color", Color(1, 1, 1))
+    depth_label = _label("DEPTH   0m      BANKED  0 cr")
     vbox.add_child(depth_label)
-
-    var hint := Label.new()
-    hint.text = "A/D move   W thrust up   S thrust down   push into rock to dig"
-    hint.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))
-    hint.add_theme_font_size_override("font_size", 13)
-    vbox.add_child(hint)
-
-    var center := CenterContainer.new()
-    center.set_anchors_preset(Control.PRESET_FULL_RECT)
-    center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    add_child(center)
-
-    var panel := PanelContainer.new()
-    var style := StyleBoxFlat.new()
-    style.bg_color = Color(0.05, 0.05, 0.07, 0.85)
-    style.set_content_margin_all(24)
-    panel.add_theme_stylebox_override("panel", style)
-    center.add_child(panel)
-
-    var panel_vbox := VBoxContainer.new()
-    panel_vbox.add_theme_constant_override("separation", 8)
-    panel.add_child(panel_vbox)
-
-    message_label = Label.new()
-    message_label.add_theme_font_size_override("font_size", 32)
-    message_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    message_label.add_theme_color_override("font_color", Color(1, 0.4, 0.35))
-    panel_vbox.add_child(message_label)
-
-    sub_label = Label.new()
-    sub_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    sub_label.add_theme_color_override("font_color", Color(1, 1, 1))
-    panel_vbox.add_child(sub_label)
-
-    game_over_box = center
-    game_over_box.visible = false
 
 func _make_stat_row(parent: VBoxContainer, label_text: String, color: Color) -> ProgressBar:
     var row := HBoxContainer.new()
-    var lbl := Label.new()
-    lbl.text = label_text
-    lbl.custom_minimum_size = Vector2(50, 0)
-    lbl.add_theme_color_override("font_color", Color(1, 1, 1))
+    row.add_theme_constant_override("separation", 8)
+
+    var lbl := _label(label_text)
+    lbl.custom_minimum_size = Vector2(46, 0)
     row.add_child(lbl)
 
     var bar := ProgressBar.new()
@@ -95,16 +104,96 @@ func _make_stat_row(parent: VBoxContainer, label_text: String, color: Color) -> 
     parent.add_child(row)
     return bar
 
-func update_stats(o2: float, fuel: float, cargo_count: int, cargo_value: int, depth_m: int, score: int) -> void:
+func _build_controls_panel() -> void:
+    var panel := _make_panel(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE)
+    var vbox := VBoxContainer.new()
+    vbox.add_theme_constant_override("separation", 3)
+    panel.add_child(vbox)
+
+    vbox.add_child(_label("CONTROLS", Color(1, 1, 1, 0.6), 12))
+    var lines := [
+        "A / D -- move",
+        "W / Space -- thrust up",
+        "S -- thrust down",
+        "Hold Left Click -- dig (push toward rock)",
+        "R -- try again (after a run ends)",
+    ]
+    for line in lines:
+        vbox.add_child(_label(line, Color(1, 1, 1, 0.75), 13))
+
+func _build_minimap_panel() -> void:
+    var panel := _make_panel(Control.PRESET_RIGHT_WIDE, Control.PRESET_MODE_KEEP_WIDTH, Vector2(120, 0))
+    minimap = MiniMap.new()
+    minimap.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    minimap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    panel.add_child(minimap)
+
+func _build_level_banner() -> void:
+    level_banner_box = _make_panel(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE)
+    level_banner = _label("", Color(0.65, 1.0, 0.8), 18)
+    level_banner_box.add_child(level_banner)
+    level_banner_box.visible = false
+
+func _build_game_over_panel() -> void:
+    var center := CenterContainer.new()
+    center.set_anchors_preset(Control.PRESET_FULL_RECT)
+    center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    add_child(center)
+
+    var panel := PanelContainer.new()
+    var style := StyleBoxFlat.new()
+    style.bg_color = Color(0.05, 0.05, 0.07, 0.88)
+    style.set_content_margin_all(PANEL_PADDING * 2)
+    style.set_corner_radius_all(PANEL_RADIUS)
+    panel.add_theme_stylebox_override("panel", style)
+    center.add_child(panel)
+
+    var panel_vbox := VBoxContainer.new()
+    panel_vbox.add_theme_constant_override("separation", 8)
+    panel.add_child(panel_vbox)
+
+    message_label = _label("RUN OVER", Color(1, 0.4, 0.35), 32)
+    message_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    panel_vbox.add_child(message_label)
+
+    sub_label = _label("", Color(1, 1, 1), 14)
+    sub_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    panel_vbox.add_child(sub_label)
+
+    game_over_box = center
+    game_over_box.visible = false
+
+func update_stats(
+    o2: float, fuel: float,
+    cargo_gold: int, cargo_nickel: int, cargo_fuel_ore: int, cargo_credit: int,
+    banked_score: int, depth_m: int,
+    level_name: String, level_number: int,
+    fuel_ore_banked: int, fuel_ore_quota: int
+) -> void:
     o2_bar.value = o2
     fuel_bar.value = fuel
-    cargo_label.text = "CARGO   %d ore  (%d cr held)" % [cargo_count, cargo_value]
-    depth_label.text = "DEPTH   %dm      BANKED  %d cr" % [depth_m, score]
+    level_label.text = "LEVEL %d -- %s" % [level_number, level_name]
+    quota_label.text = "Fuel ore banked %d / %d" % [fuel_ore_banked, fuel_ore_quota]
+    cargo_label.text = "CARGO   %d gold  %d nickel  %d fuel ore  (%d cr held)" % [cargo_gold, cargo_nickel, cargo_fuel_ore, cargo_credit]
+    depth_label.text = "DEPTH   %dm      BANKED  %d cr" % [depth_m, banked_score]
+
+func update_minimap(progress: float, depth_m: int, max_depth_m: int, fuel_ore_banked: int, fuel_ore_quota: int) -> void:
+    minimap.set_progress(progress, "%dm / %dm" % [depth_m, max_depth_m], "Fuel ore %d/%d" % [fuel_ore_banked, fuel_ore_quota])
 
 func show_game_over(reason: String, score: int, depth_m: int) -> void:
     message_label.text = "RUN OVER"
-    sub_label.text = "%s\n\nBanked %d credits   ·   reached %dm deep\n\nPress R to descend again" % [reason, score, depth_m]
+    message_label.add_theme_color_override("font_color", Color(1, 0.4, 0.35))
+    sub_label.text = "%s\n\nBanked %d credits this level   |   reached %dm deep\n\nPress R to try again" % [reason, score, depth_m]
     game_over_box.visible = true
 
 func hide_game_over() -> void:
     game_over_box.visible = false
+
+func show_level_banner(level_name: String, level_number: int) -> void:
+    level_banner.text = "LEVEL %d UNLOCKED -- %s" % [level_number, level_name]
+    level_banner_box.visible = true
+    level_banner_box.modulate.a = 1.0
+    var tween := create_tween()
+    tween.tween_interval(2.4)
+    tween.tween_property(level_banner_box, "modulate:a", 0.0, 0.8)
+    tween.tween_callback(func(): level_banner_box.visible = false)
