@@ -7,6 +7,8 @@ class_name HeatVent
 const RADIUS := 88.0
 const DRAIN_PER_SEC := 6.0 # on top of passive O2 drain -- dangerous to linger, not instant
 
+var hiss_player: AudioStreamPlayer2D
+
 func _ready() -> void:
     set_collision_layer_value(1, false)
     set_collision_mask_value(2, true)
@@ -29,16 +31,24 @@ func _ready() -> void:
     core.polygon = _circle_points(10.0, 10)
     add_child(core)
 
+    hiss_player = AudioStreamPlayer2D.new()
+    hiss_player.stream = Sfx.stream("heat_vent_hiss")
+    hiss_player.volume_db = -4.0
+    hiss_player.max_distance = 500.0
+    add_child(hiss_player)
+
     body_entered.connect(_on_body_entered)
     body_exited.connect(_on_body_exited)
 
 func _on_body_entered(body: Node) -> void:
     if body.is_in_group("player"):
         body.enter_heat(DRAIN_PER_SEC)
+        hiss_player.play()
 
 func _on_body_exited(body: Node) -> void:
     if body.is_in_group("player"):
         body.exit_heat(DRAIN_PER_SEC)
+        hiss_player.stop()
 
 func _circle_points(radius: float, segments: int) -> PackedVector2Array:
     var pts := PackedVector2Array()

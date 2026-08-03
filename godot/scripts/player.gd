@@ -50,6 +50,8 @@ var facing_angle := 0.0
 
 var flame_poly: Polygon2D
 var drill_poly: Polygon2D
+var thruster_player: AudioStreamPlayer2D
+var _alarm_cooldown := 0.0
 
 func _ready() -> void:
     add_to_group("player")
@@ -82,9 +84,16 @@ func _ready() -> void:
     flame_poly.visible = false
     add_child(flame_poly)
 
+    thruster_player = AudioStreamPlayer2D.new()
+    thruster_player.stream = Sfx.stream("thruster_loop")
+    thruster_player.volume_db = -8.0
+    add_child(thruster_player)
+
 func _physics_process(delta: float) -> void:
     if not alive or not control_enabled:
         velocity = Vector2.ZERO
+        if thruster_player.playing:
+            thruster_player.stop()
         return
 
     var input_dir := _read_move_input()
@@ -116,6 +125,11 @@ func _physics_process(delta: float) -> void:
     velocity.y = clamp(velocity.y, -MAX_SPEED, MAX_SPEED * 1.4)
     flame_poly.visible = thrust_active
 
+    if thrust_active and not docked and not thruster_player.playing:
+        thruster_player.play()
+    elif (not thrust_active or docked) and thruster_player.playing:
+        thruster_player.stop()
+
     move_and_slide()
 
     var digging := _handle_digging(input_dir, delta)
@@ -128,6 +142,14 @@ func _physics_process(delta: float) -> void:
         fuel = min(FUEL_MAX, fuel + DOCK_REFILL_RATE * delta)
     elif o2 <= 0.0:
         hit_by_hazard("ran out of oxygen")
+
+    _tick_alarm(delta)
+
+func _tick_alarm(delta: float) -> void:
+    _alarm_cooldown -= delta
+    if alive and not docked and (o2 < 20.0 or fuel < 20.0) and _alarm_cooldown <= 0.0:
+        Sfx.play("low_resource_alarm")
+        _alarm_cooldown = 1.2
 
 func _read_move_input() -> Vector2:
     var d := Vector2.ZERO
@@ -169,15 +191,19 @@ func _handle_digging(input_dir: Vector2, delta: float) -> bool:
         var tile_before := terrain.get_tile(cell)
         terrain.dig(cell, self)
         var depth_m := terrain.depth_meters(cell)
+        Sfx.play_at("dig_hit", global_position)
         match tile_before:
             Constants.Tile.GOLD_ORE:
                 cargo_gold += 1
                 cargo_credit_value += int(14 + depth_m * 0.8)
+                Sfx.play_at("ore_pickup_gold", global_position)
             Constants.Tile.NICKEL_ORE:
                 cargo_nickel += 1
                 cargo_credit_value += int(6 + depth_m * 0.3)
+                Sfx.play_at("ore_pickup_nickel", global_position)
             Constants.Tile.FUEL_ORE:
                 cargo_fuel_ore += 1
+                Sfx.play_at("ore_pickup_fuel", global_position)
     return true
 
 func _tick_resources(delta: float, thrust_active: bool) -> void:
@@ -212,6 +238,9 @@ func hit_by_hazard(reason: String) -> void:
         return
     alive = false
     velocity = Vector2.ZERO
+    if thruster_player.playing:
+        thruster_player.stop()
+    Sfx.play("death_buzz")
     died.emit(reason)
 
 func respawn_at(spawn_pos: Vector2) -> void:

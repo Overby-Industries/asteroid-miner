@@ -67,6 +67,7 @@ func finish_landing_immediately(final_pos: Vector2) -> void:
 
 func _on_landed() -> void:
     flame_poly.visible = false
+    Sfx.play_at("mothership_thump", global_position)
     var bounce := create_tween()
     bounce.tween_property(self, "scale", Vector2(1.1, 0.85), 0.08)
     bounce.tween_property(self, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)

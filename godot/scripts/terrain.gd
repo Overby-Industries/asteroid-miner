@@ -135,6 +135,7 @@ func _begin_collapse(cell: Vector2i) -> void:
         return
     _clear_tile(cell)
     collapse_triggered.emit(cell)
+    Sfx.play_at("cave_in_rumble", to_global(map_to_local(cell)))
     _spawn_falling_rock(cell)
     _check_collapse_neighbors(cell)
 

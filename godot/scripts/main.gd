@@ -219,7 +219,9 @@ func _process(_delta: float) -> void:
 func _on_cargo_banked(credit_value: int, fuel_ore: int, _gold: int, _nickel: int) -> void:
     run_score += credit_value
     fuel_ore_banked += fuel_ore
+    Sfx.play("dock_chime")
     if fuel_ore_banked >= level_config.fuel_ore_quota:
+        Sfx.play("level_complete_sweep")
         _advance_level()
 
 func _on_player_died(reason: String) -> void:
@@ -234,10 +236,12 @@ func _unhandled_key_input(event: InputEvent) -> void:
     match state:
         GameState.MENU:
             if key_event.keycode == KEY_SPACE or key_event.keycode == KEY_ENTER:
+                Sfx.play("menu_blip")
                 _start_game()
         GameState.PLAYING:
             if not run_active and key_event.keycode == KEY_R:
                 _respawn_after_death()
         GameState.CUTSCENE:
-            if key_event.keycode == KEY_ENTER:
+            if key_event.keycode == KEY_ENTER and not skip_requested:
+                Sfx.play("menu_blip")
                 skip_requested = true

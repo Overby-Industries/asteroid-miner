@@ -46,6 +46,7 @@ func _enter_state(s: int) -> void:
         State.ERUPTING:
             timer = rng.randf_range(0.4, 0.6)
             visual.color = Color(1.0, 0.3, 0.12, 0.95)
+            Sfx.play_at("vent_blast", global_position)
 
 func _process(delta: float) -> void:
     timer -= delta

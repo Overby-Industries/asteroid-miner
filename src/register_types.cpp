@@ -5,13 +5,16 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/godot.hpp>
 
+#include "sfx_generator.h"
+
 using namespace godot;
 
-// TODO: register real GDExtension classes here as they're written --
+// TODO: register more real GDExtension classes here as they're written --
 // e.g. procedural terrain/ore generation, ported from or sharing code
 // with Aevoria Simulator's ProceduralArtGenerator.
 void initialize_asteroid_miner_module(ModuleInitializationLevel p_level) {
     if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) return;
+    GDREGISTER_CLASS(SfxGenerator);
 }
 
 void uninitialize_asteroid_miner_module(ModuleInitializationLevel p_level) {
