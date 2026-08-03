@@ -147,7 +147,11 @@ func _spawn_falling_rock(cell: Vector2i) -> void:
 func _spawn_heat_vent(cell: Vector2i) -> void:
     var vent := HeatVent.new()
     vent.position = map_to_local(cell)
-    get_parent().add_child(vent)
+    # Parented to the terrain itself (not get_parent()) so it's freed
+    # automatically when this terrain generation is torn down on a level
+    # transition -- otherwise every past level's heat vents would linger
+    # forever, invisible but still live hazards at their old coordinates.
+    add_child(vent)
 
 func _set_tile(cell: Vector2i, tile: int) -> void:
     grid[cell] = tile

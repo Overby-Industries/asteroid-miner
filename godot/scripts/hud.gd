@@ -12,6 +12,10 @@ const PANEL_PADDING := 16
 const PANEL_BG := Color(0.05, 0.05, 0.08, 0.78)
 const PANEL_RADIUS := 6
 
+var stats_panel: PanelContainer
+var controls_panel: PanelContainer
+var minimap_panel: PanelContainer
+
 var o2_bar: ProgressBar
 var fuel_bar: ProgressBar
 var level_label: Label
@@ -25,16 +29,20 @@ var message_label: Label
 var sub_label: Label
 var game_over_box: Control
 
-var level_banner: Label
-var level_banner_box: PanelContainer
+var title_card_box: PanelContainer
+var title_main_label: Label
+var title_sub_label: Label
+
+var fade_rect: ColorRect
 
 func _ready() -> void:
     layer = 10
     _build_stats_panel()
     _build_controls_panel()
     _build_minimap_panel()
-    _build_level_banner()
+    _build_title_card()
     _build_game_over_panel()
+    _build_fade_overlay()
 
 func _make_panel(preset: int, mode: int, custom_min: Vector2 = Vector2.ZERO) -> PanelContainer:
     var panel := PanelContainer.new()
@@ -57,10 +65,10 @@ func _label(text: String, color := Color(1, 1, 1), size := 14) -> Label:
     return lbl
 
 func _build_stats_panel() -> void:
-    var panel := _make_panel(Control.PRESET_TOP_LEFT, Control.PRESET_MODE_MINSIZE)
+    stats_panel = _make_panel(Control.PRESET_TOP_LEFT, Control.PRESET_MODE_MINSIZE)
     var vbox := VBoxContainer.new()
     vbox.add_theme_constant_override("separation", 6)
-    panel.add_child(vbox)
+    stats_panel.add_child(vbox)
 
     level_label = _label("LEVEL 1 -- Ashfall Rubble", Color(0.75, 0.85, 1.0), 15)
     vbox.add_child(level_label)
@@ -105,10 +113,10 @@ func _make_stat_row(parent: VBoxContainer, label_text: String, color: Color) -> 
     return bar
 
 func _build_controls_panel() -> void:
-    var panel := _make_panel(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE)
+    controls_panel = _make_panel(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE)
     var vbox := VBoxContainer.new()
     vbox.add_theme_constant_override("separation", 3)
-    panel.add_child(vbox)
+    controls_panel.add_child(vbox)
 
     vbox.add_child(_label("CONTROLS", Color(1, 1, 1, 0.6), 12))
     var lines := [
@@ -122,17 +130,31 @@ func _build_controls_panel() -> void:
         vbox.add_child(_label(line, Color(1, 1, 1, 0.75), 13))
 
 func _build_minimap_panel() -> void:
-    var panel := _make_panel(Control.PRESET_RIGHT_WIDE, Control.PRESET_MODE_KEEP_WIDTH, Vector2(120, 0))
+    minimap_panel = _make_panel(Control.PRESET_RIGHT_WIDE, Control.PRESET_MODE_KEEP_WIDTH, Vector2(120, 0))
     minimap = MiniMap.new()
     minimap.size_flags_vertical = Control.SIZE_EXPAND_FILL
     minimap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    panel.add_child(minimap)
+    minimap_panel.add_child(minimap)
 
-func _build_level_banner() -> void:
-    level_banner_box = _make_panel(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE)
-    level_banner = _label("", Color(0.65, 1.0, 0.8), 18)
-    level_banner_box.add_child(level_banner)
-    level_banner_box.visible = false
+func _build_title_card() -> void:
+    title_card_box = _make_panel(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE)
+    var vbox := VBoxContainer.new()
+    vbox.add_theme_constant_override("separation", 4)
+    title_card_box.add_child(vbox)
+
+    title_main_label = _label("", Color(0.75, 0.85, 1.0), 26)
+    title_main_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    vbox.add_child(title_main_label)
+
+    title_sub_label = _label("", Color(1, 1, 1, 0.8), 15)
+    title_sub_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    vbox.add_child(title_sub_label)
+
+    var skip_hint := _label("Press ENTER to skip", Color(1, 1, 1, 0.5), 12)
+    skip_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    vbox.add_child(skip_hint)
+
+    title_card_box.visible = false
 
 func _build_game_over_panel() -> void:
     var center := CenterContainer.new()
@@ -163,6 +185,18 @@ func _build_game_over_panel() -> void:
     game_over_box = center
     game_over_box.visible = false
 
+func _build_fade_overlay() -> void:
+    fade_rect = ColorRect.new()
+    fade_rect.color = Color(0, 0, 0, 0)
+    fade_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+    fade_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    add_child(fade_rect)
+
+func set_gameplay_panels_visible(v: bool) -> void:
+    stats_panel.visible = v
+    controls_panel.visible = v
+    minimap_panel.visible = v
+
 func update_stats(
     o2: float, fuel: float,
     cargo_gold: int, cargo_nickel: int, cargo_fuel_ore: int, cargo_credit: int,
@@ -189,11 +223,21 @@ func show_game_over(reason: String, score: int, depth_m: int) -> void:
 func hide_game_over() -> void:
     game_over_box.visible = false
 
-func show_level_banner(level_name: String, level_number: int) -> void:
-    level_banner.text = "LEVEL %d UNLOCKED -- %s" % [level_number, level_name]
-    level_banner_box.visible = true
-    level_banner_box.modulate.a = 1.0
+func show_title_card(main_text: String, sub_text: String) -> void:
+    title_main_label.text = main_text
+    title_sub_label.text = sub_text
+    title_card_box.modulate.a = 1.0
+    title_card_box.visible = true
+
+func hide_title_card() -> void:
+    title_card_box.visible = false
+
+func fade_to_black(duration: float) -> void:
     var tween := create_tween()
-    tween.tween_interval(2.4)
-    tween.tween_property(level_banner_box, "modulate:a", 0.0, 0.8)
-    tween.tween_callback(func(): level_banner_box.visible = false)
+    tween.tween_property(fade_rect, "color:a", 1.0, duration)
+    await tween.finished
+
+func fade_from_black(duration: float) -> void:
+    var tween := create_tween()
+    tween.tween_property(fade_rect, "color:a", 0.0, duration)
+    await tween.finished

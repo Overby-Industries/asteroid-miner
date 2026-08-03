@@ -41,6 +41,7 @@ var cargo_fuel_ore := 0
 var cargo_credit_value := 0
 var docked := false
 var alive := true
+var control_enabled := true
 var heat_drain := 0.0
 
 var dig_progress := 0.0
@@ -82,7 +83,7 @@ func _ready() -> void:
     add_child(flame_poly)
 
 func _physics_process(delta: float) -> void:
-    if not alive:
+    if not alive or not control_enabled:
         velocity = Vector2.ZERO
         return
 
