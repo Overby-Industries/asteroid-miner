@@ -1,6 +1,13 @@
 extends Area2D
 class_name Mothership
 
+# See art/sprites/README.md -- if a pre-rendered hull image lands at this
+# path, _ready() uses it instead of the procedural hull polygon. Rendered
+# at any resolution and scaled to fit HULL_SPRITE_SIZE (world units), so
+# export size doesn't need to match gameplay size exactly.
+const HULL_SPRITE_PATH := "res://art/sprites/mothership.png"
+const HULL_SPRITE_SIZE := Vector2(100, 58)
+
 var flame_poly: Polygon2D
 
 func _ready() -> void:
@@ -23,19 +30,26 @@ func _ready() -> void:
     flame_poly.visible = false
     add_child(flame_poly)
 
-    var hull := Polygon2D.new()
-    hull.color = Color(0.58, 0.63, 0.7)
-    hull.polygon = PackedVector2Array([
-        Vector2(-48, -27), Vector2(48, -27), Vector2(48, 27), Vector2(-48, 27),
-    ])
-    add_child(hull)
+    if ResourceLoader.exists(HULL_SPRITE_PATH):
+        var hull_sprite := Sprite2D.new()
+        var hull_tex: Texture2D = load(HULL_SPRITE_PATH)
+        hull_sprite.texture = hull_tex
+        hull_sprite.scale = HULL_SPRITE_SIZE / hull_tex.get_size()
+        add_child(hull_sprite)
+    else:
+        var hull := Polygon2D.new()
+        hull.color = Color(0.58, 0.63, 0.7)
+        hull.polygon = PackedVector2Array([
+            Vector2(-48, -27), Vector2(48, -27), Vector2(48, 27), Vector2(-48, 27),
+        ])
+        add_child(hull)
 
-    var window := Polygon2D.new()
-    window.color = Color(0.35, 0.85, 0.95, 0.9)
-    window.polygon = PackedVector2Array([
-        Vector2(-14, -8), Vector2(14, -8), Vector2(14, 8), Vector2(-14, 8),
-    ])
-    add_child(window)
+        var window := Polygon2D.new()
+        window.color = Color(0.35, 0.85, 0.95, 0.9)
+        window.polygon = PackedVector2Array([
+            Vector2(-14, -8), Vector2(14, -8), Vector2(14, 8), Vector2(-14, 8),
+        ])
+        add_child(window)
 
     body_entered.connect(_on_body_entered)
     body_exited.connect(_on_body_exited)

@@ -7,6 +7,7 @@ const Mothership = preload("res://scripts/mothership.gd")
 const SurfaceVent = preload("res://scripts/surface_vent.gd")
 const HUD = preload("res://scripts/hud.gd")
 const MainMenu = preload("res://scripts/ui/main_menu.gd")
+const PauseMenu = preload("res://scripts/ui/pause_menu.gd")
 const LevelConfig = preload("res://scripts/levels/level_config.gd")
 
 enum GameState { MENU, CUTSCENE, PLAYING }
@@ -17,6 +18,7 @@ var mothership: Mothership
 var vent: SurfaceVent
 var hud: HUD
 var menu: MainMenu
+var pause_menu: PauseMenu
 var camera: Camera2D
 
 var state: GameState = GameState.MENU
@@ -48,6 +50,9 @@ func _ready() -> void:
     menu = MainMenu.new()
     add_child(menu)
 
+    pause_menu = PauseMenu.new()
+    add_child(pause_menu)
+
 func _start_game() -> void:
     menu.visible = false
     level_index = 0
@@ -78,6 +83,7 @@ func _respawn_after_death() -> void:
 func _play_landing_cutscene() -> void:
     state = GameState.CUTSCENE
     skip_requested = false
+    pause_menu.set_enabled(false)
     hud.set_gameplay_panels_visible(false)
     if player:
         player.visible = false
@@ -121,6 +127,7 @@ func _play_landing_cutscene() -> void:
 
     hud.set_gameplay_panels_visible(true)
     state = GameState.PLAYING
+    pause_menu.set_enabled(true)
     await hud.fade_from_black(FADE_TIME)
 
 # Awaits a Tween to finish naturally, unless skip_requested gets set first --

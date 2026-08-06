@@ -31,6 +31,13 @@ const FUEL_THRUST_DRAIN := 0.35  # per second while any thruster fires (includes
 const O2_DRAIN := 0.15           # per second, passive -- tuned for ~10-11 min per dive
 const DOCK_REFILL_RATE := 60.0
 
+# See art/sprites/README.md -- if a pre-rendered hull image lands at this
+# path, _ready() uses it instead of the procedural hull polygon. Rendered
+# at any resolution and scaled to fit HULL_SPRITE_SIZE (world units), so
+# export size doesn't need to match gameplay size exactly.
+const HULL_SPRITE_PATH := "res://art/sprites/player_ship.png"
+const HULL_SPRITE_SIZE := Vector2(26, 20)
+
 var terrain: Terrain = null
 
 var fuel := FUEL_MAX
@@ -66,12 +73,19 @@ func _ready() -> void:
     shape.shape = rect
     add_child(shape)
 
-    var body_poly := Polygon2D.new()
-    body_poly.color = Color(0.78, 0.82, 0.86)
-    body_poly.polygon = PackedVector2Array([
-        Vector2(-11, -9), Vector2(11, -9), Vector2(11, 9), Vector2(-11, 9),
-    ])
-    add_child(body_poly)
+    if ResourceLoader.exists(HULL_SPRITE_PATH):
+        var hull_sprite := Sprite2D.new()
+        var hull_tex: Texture2D = load(HULL_SPRITE_PATH)
+        hull_sprite.texture = hull_tex
+        hull_sprite.scale = HULL_SPRITE_SIZE / hull_tex.get_size()
+        add_child(hull_sprite)
+    else:
+        var body_poly := Polygon2D.new()
+        body_poly.color = Color(0.78, 0.82, 0.86)
+        body_poly.polygon = PackedVector2Array([
+            Vector2(-11, -9), Vector2(11, -9), Vector2(11, 9), Vector2(-11, 9),
+        ])
+        add_child(body_poly)
 
     drill_poly = Polygon2D.new()
     drill_poly.color = Color(0.92, 0.58, 0.18)

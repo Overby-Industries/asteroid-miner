@@ -44,7 +44,7 @@ func _ready() -> void:
     _build_game_over_panel()
     _build_fade_overlay()
 
-func _make_panel(preset: int, mode: int, custom_min: Vector2 = Vector2.ZERO) -> PanelContainer:
+func _make_panel(custom_min: Vector2 = Vector2.ZERO) -> PanelContainer:
     var panel := PanelContainer.new()
     if custom_min != Vector2.ZERO:
         panel.custom_minimum_size = custom_min
@@ -54,8 +54,17 @@ func _make_panel(preset: int, mode: int, custom_min: Vector2 = Vector2.ZERO) -> 
     style.set_corner_radius_all(PANEL_RADIUS)
     panel.add_theme_stylebox_override("panel", style)
     add_child(panel)
-    panel.set_anchors_and_offsets_preset(preset, mode, SCREEN_MARGIN)
     return panel
+
+# Anchors a panel to a screen edge/corner using its CURRENT minimum size.
+# Must be called after the panel's content (children) is fully built --
+# calling it earlier bakes in the near-empty pre-content size, and any
+# growth from there extends away from the anchored corner. For a top-left
+# panel that growth stays on screen; for a bottom/right/center anchor it
+# pushes the panel past that edge and off screen. See PROJECT memory
+# "project-overview" for the full writeup of this gotcha.
+func _anchor_panel(panel: PanelContainer, preset: int, mode: int) -> void:
+    panel.set_anchors_and_offsets_preset(preset, mode, SCREEN_MARGIN)
 
 func _label(text: String, color := Color(1, 1, 1), size := 14) -> Label:
     var lbl := Label.new()
@@ -65,7 +74,7 @@ func _label(text: String, color := Color(1, 1, 1), size := 14) -> Label:
     return lbl
 
 func _build_stats_panel() -> void:
-    stats_panel = _make_panel(Control.PRESET_TOP_LEFT, Control.PRESET_MODE_MINSIZE)
+    stats_panel = _make_panel()
     var vbox := VBoxContainer.new()
     vbox.add_theme_constant_override("separation", 6)
     stats_panel.add_child(vbox)
@@ -86,6 +95,8 @@ func _build_stats_panel() -> void:
 
     depth_label = _label("DEPTH   0m      BANKED  0 cr")
     vbox.add_child(depth_label)
+
+    _anchor_panel(stats_panel, Control.PRESET_TOP_LEFT, Control.PRESET_MODE_MINSIZE)
 
 func _make_stat_row(parent: VBoxContainer, label_text: String, color: Color) -> ProgressBar:
     var row := HBoxContainer.new()
@@ -113,7 +124,7 @@ func _make_stat_row(parent: VBoxContainer, label_text: String, color: Color) -> 
     return bar
 
 func _build_controls_panel() -> void:
-    controls_panel = _make_panel(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE)
+    controls_panel = _make_panel()
     var vbox := VBoxContainer.new()
     vbox.add_theme_constant_override("separation", 3)
     controls_panel.add_child(vbox)
@@ -125,19 +136,24 @@ func _build_controls_panel() -> void:
         "S -- thrust down",
         "Hold Left Click -- dig (push toward rock)",
         "R -- try again (after a run ends)",
+        "ESC -- pause",
     ]
     for line in lines:
         vbox.add_child(_label(line, Color(1, 1, 1, 0.75), 13))
 
+    _anchor_panel(controls_panel, Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE)
+
 func _build_minimap_panel() -> void:
-    minimap_panel = _make_panel(Control.PRESET_RIGHT_WIDE, Control.PRESET_MODE_KEEP_WIDTH, Vector2(120, 0))
+    minimap_panel = _make_panel(Vector2(120, 0))
     minimap = MiniMap.new()
     minimap.size_flags_vertical = Control.SIZE_EXPAND_FILL
     minimap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     minimap_panel.add_child(minimap)
 
+    _anchor_panel(minimap_panel, Control.PRESET_RIGHT_WIDE, Control.PRESET_MODE_KEEP_WIDTH)
+
 func _build_title_card() -> void:
-    title_card_box = _make_panel(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE)
+    title_card_box = _make_panel()
     var vbox := VBoxContainer.new()
     vbox.add_theme_constant_override("separation", 4)
     title_card_box.add_child(vbox)
@@ -154,6 +170,7 @@ func _build_title_card() -> void:
     skip_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     vbox.add_child(skip_hint)
 
+    _anchor_panel(title_card_box, Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE)
     title_card_box.visible = false
 
 func _build_game_over_panel() -> void:
