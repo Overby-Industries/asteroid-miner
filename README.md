@@ -1,6 +1,6 @@
 # Asteroid Miner (working title)
 
-[![Version](https://img.shields.io/badge/Version-1.0.3--Alpha-blue?style=for-the-badge&logo=github)](https://github.com/Overby-Industries/asteroid-miner/releases)
+[![Version](https://img.shields.io/badge/Version-1.0.4--Alpha-blue?style=for-the-badge&logo=github)](https://github.com/Overby-Industries/asteroid-miner/releases)
 [![Play on itch.io](https://img.shields.io/badge/Play_on-itch.io-fa5c5c?style=for-the-badge&logo=itchdotio)](https://aevoria-simulator.itch.io/asteroid-miner)
 
 A small 2D asteroid-mining game -- dig into a procedurally generated
