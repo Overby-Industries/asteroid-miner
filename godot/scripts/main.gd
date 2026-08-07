@@ -8,7 +8,9 @@ const SurfaceVent = preload("res://scripts/surface_vent.gd")
 const HUD = preload("res://scripts/hud.gd")
 const MainMenu = preload("res://scripts/ui/main_menu.gd")
 const PauseMenu = preload("res://scripts/ui/pause_menu.gd")
+const LeaderboardScreen = preload("res://scripts/ui/leaderboard_screen.gd")
 const LevelConfig = preload("res://scripts/levels/level_config.gd")
+const Upgrades = preload("res://scripts/upgrades.gd")
 
 enum GameState { MENU, CUTSCENE, PLAYING }
 
@@ -19,6 +21,7 @@ var vent: SurfaceVent
 var hud: HUD
 var menu: MainMenu
 var pause_menu: PauseMenu
+var leaderboard_screen: LeaderboardScreen
 var camera: Camera2D
 
 var state: GameState = GameState.MENU
@@ -28,6 +31,11 @@ var level_config: LevelConfig
 var run_score := 0
 var fuel_ore_banked := 0
 var run_active := true
+
+const STARTING_LIVES := 3
+var lives := STARTING_LIVES
+var upgrade_index := 0
+var pending_upgrade_name := ""
 
 const GAMEPLAY_ZOOM := Vector2(2.0, 2.0)
 const CUTSCENE_ZOOM := Vector2(1.3, 1.3)
@@ -53,6 +61,10 @@ func _ready() -> void:
     pause_menu = PauseMenu.new()
     add_child(pause_menu)
 
+    leaderboard_screen = LeaderboardScreen.new()
+    add_child(leaderboard_screen)
+    leaderboard_screen.closed.connect(_on_leaderboard_closed)
+
 func _start_game() -> void:
     menu.visible = false
     level_index = 0
@@ -60,6 +72,9 @@ func _start_game() -> void:
     run_score = 0
     fuel_ore_banked = 0
     run_active = true
+    lives = STARTING_LIVES
+    upgrade_index = 0
+    pending_upgrade_name = ""
     hud.hide_game_over()
     await _play_landing_cutscene()
 
@@ -67,6 +82,8 @@ func _advance_level() -> void:
     level_index += 1
     fuel_ore_banked = 0
     level_config = LevelConfig.for_level(level_index)
+    var def := _grant_next_upgrade_silent()
+    pending_upgrade_name = def.get("name", "")
     await _play_landing_cutscene()
 
 func _respawn_after_death() -> void:
@@ -97,7 +114,12 @@ func _play_landing_cutscene() -> void:
     camera.zoom = CUTSCENE_ZOOM
     camera.global_position = landing_pos
 
-    hud.show_title_card("LEVEL %d" % (level_index + 1), level_config.level_name)
+    hud.hide_upgrade_toast()
+    var title_sub := level_config.level_name
+    if pending_upgrade_name != "":
+        title_sub += "\nUpgrade unlocked: %s" % pending_upgrade_name
+        pending_upgrade_name = ""
+    hud.show_title_card("LEVEL %d" % (level_index + 1), title_sub)
 
     var descent_tween := mothership.begin_landing(landing_pos, MOTHERSHIP_DROP_HEIGHT, MOTHERSHIP_DESCENT_TIME)
     await _wait_for_tween(descent_tween, func(): mothership.finish_landing_immediately(landing_pos))
@@ -215,7 +237,7 @@ func _process(_delta: float) -> void:
 
     var depth := int(terrain.depth_at_world_y(player.global_position.y))
     hud.update_stats(
-        player.o2, player.fuel,
+        player.o2, player.fuel, lives,
         player.cargo_gold, player.cargo_nickel, player.cargo_fuel_ore, player.cargo_credit_value,
         run_score, depth,
         level_config.level_name, level_index + 1,
@@ -227,17 +249,76 @@ func _on_cargo_banked(credit_value: int, fuel_ore: int, _gold: int, _nickel: int
     run_score += credit_value
     fuel_ore_banked += fuel_ore
     Sfx.play("dock_chime")
+    _maybe_grant_score_upgrade()
     if fuel_ore_banked >= level_config.fuel_ore_quota:
         Sfx.play("level_complete_sweep")
         _advance_level()
 
+# Single shared pointer into Upgrades.DEFS -- advanced by EITHER a level-up
+# (_advance_level) or a score threshold (_maybe_grant_score_upgrade below),
+# whichever happens first, so the two triggers can never disagree about
+# how many upgrades this run has earned or double-grant the same one.
+func _grant_next_upgrade_silent() -> Dictionary:
+    if upgrade_index >= Upgrades.DEFS.size():
+        return {}
+    var def: Dictionary = Upgrades.DEFS[upgrade_index]
+    Upgrades.apply(def.id, player)
+    upgrade_index += 1
+    return def
+
+func _maybe_grant_score_upgrade() -> void:
+    while upgrade_index < Upgrades.SCORE_THRESHOLDS.size() and run_score >= Upgrades.SCORE_THRESHOLDS[upgrade_index]:
+        var def := _grant_next_upgrade_silent()
+        if def.is_empty():
+            return
+        hud.show_upgrade_toast(def.name, def.desc)
+        Sfx.play("level_complete_sweep")
+
 func _on_player_died(reason: String) -> void:
     run_active = false
-    var depth := terrain.depth_at_world_y(player.global_position.y)
-    hud.show_game_over(reason, run_score, int(depth))
+    lives -= 1
+    var depth := int(terrain.depth_at_world_y(player.global_position.y))
+    if lives > 0:
+        hud.show_game_over(reason, run_score, depth, lives)
+    else:
+        pause_menu.set_enabled(false)
+        leaderboard_screen.show_after_run(reason, run_score, depth, level_index + 1)
+
+func _on_leaderboard_closed() -> void:
+    if state == GameState.PLAYING and lives <= 0:
+        _return_to_main_menu()
+    # else: opened from the main menu for a view-only look, nothing further.
+
+# Full run reset -- frees player/terrain/mothership/vent rather than
+# resetting their fields in place. This lets the existing
+# "if player == null: player = PlayerRig.new()" branch in
+# _play_landing_cutscene() rebuild a fresh, un-upgraded PlayerRig on the
+# next _start_game() for free -- no separate reset_upgrades() needed
+# anywhere, a new PlayerRig is already at every _BASE value by construction.
+func _return_to_main_menu() -> void:
+    state = GameState.MENU
+    hud.set_gameplay_panels_visible(false)
+    hud.hide_game_over()
+    menu.visible = true
+    if is_instance_valid(player):
+        player.queue_free()
+    player = null
+    for n in [terrain, mothership, vent]:
+        if n != null and is_instance_valid(n):
+            n.queue_free()
+    terrain = null
+    mothership = null
+    vent = null
 
 func _unhandled_key_input(event: InputEvent) -> void:
     if not (event is InputEventKey) or not event.pressed or event.echo:
+        return
+    # The leaderboard screen owns its own ESC/ENTER handling while visible.
+    # Without this guard, closing a view-only board opened from the menu
+    # with ENTER would ALSO be seen by the MENU branch's ENTER-starts-game
+    # check below in the same keypress, silently launching a new run
+    # underneath the closing screen.
+    if leaderboard_screen.visible:
         return
     var key_event := event as InputEventKey
     match state:
@@ -245,8 +326,11 @@ func _unhandled_key_input(event: InputEvent) -> void:
             if key_event.keycode == KEY_SPACE or key_event.keycode == KEY_ENTER:
                 Sfx.play("menu_blip")
                 _start_game()
+            elif key_event.keycode == KEY_L:
+                Sfx.play("menu_blip")
+                leaderboard_screen.show_view_only()
         GameState.PLAYING:
-            if not run_active and key_event.keycode == KEY_R:
+            if not run_active and lives > 0 and key_event.keycode == KEY_R:
                 _respawn_after_death()
         GameState.CUTSCENE:
             if key_event.keycode == KEY_ENTER and not skip_requested:

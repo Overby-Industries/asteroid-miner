@@ -17,6 +17,7 @@ config/features=PackedStringArray("4.6", "Forward Plus")
 [autoload]
 
 Sfx="*res://scripts/sfx.gd"
+Leaderboard="*res://scripts/leaderboard.gd"
 
 [display]
 

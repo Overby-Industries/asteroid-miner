@@ -54,3 +54,10 @@ func _ready() -> void:
     pulse.set_loops()
     pulse.tween_property(prompt_label, "modulate:a", 0.35, 0.8)
     pulse.tween_property(prompt_label, "modulate:a", 1.0, 0.8)
+
+    var leaderboard_hint := Label.new()
+    leaderboard_hint.text = "Press L to view leaderboard"
+    leaderboard_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    leaderboard_hint.add_theme_font_size_override("font_size", 14)
+    leaderboard_hint.add_theme_color_override("font_color", Color(1, 1, 1, 0.5))
+    vbox.add_child(leaderboard_hint)

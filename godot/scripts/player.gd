@@ -15,21 +15,25 @@ signal died(reason: String)
 signal cargo_banked(credit_value: int, fuel_ore: int, gold: int, nickel: int)
 
 const GRAVITY := 260.0
-const THRUST_ACCEL := 620.0
-const DOWN_THRUST_ACCEL := 420.0
-const SIDE_ACCEL := 520.0
-const MAX_SPEED := 220.0
 const FRICTION := 340.0
 
-const DIG_RATE := 2.4
 const DIG_RATE_CRACKED_MULT := 1.6
 const DIG_REACH := 20.0
 
-const FUEL_MAX := 100.0
-const O2_MAX := 100.0
-const FUEL_THRUST_DRAIN := 0.35  # per second while any thruster fires (includes digging pushes)
 const O2_DRAIN := 0.15           # per second, passive -- tuned for ~10-11 min per dive
 const DOCK_REFILL_RATE := 60.0
+
+# Base values for stats the upgrade track (see upgrades.gd) scales. Kept as
+# mutable instance vars (not const) below so Upgrades.apply() can grow them
+# per-run; _BASE is what a fresh, un-upgraded PlayerRig starts at.
+const THRUST_ACCEL_BASE := 620.0
+const DOWN_THRUST_ACCEL_BASE := 420.0
+const SIDE_ACCEL_BASE := 520.0
+const MAX_SPEED_BASE := 220.0
+const DIG_RATE_BASE := 2.4
+const FUEL_MAX_BASE := 100.0
+const O2_MAX_BASE := 100.0
+const FUEL_THRUST_DRAIN_BASE := 0.35  # per second while any thruster fires (includes digging pushes)
 
 # See art/sprites/README.md -- if a pre-rendered hull image lands at this
 # path, _ready() uses it instead of the procedural hull polygon. Rendered
@@ -40,8 +44,18 @@ const HULL_SPRITE_SIZE := Vector2(26, 20)
 
 var terrain: Terrain = null
 
-var fuel := FUEL_MAX
-var o2 := O2_MAX
+var thrust_accel := THRUST_ACCEL_BASE
+var down_thrust_accel := DOWN_THRUST_ACCEL_BASE
+var side_accel := SIDE_ACCEL_BASE
+var max_speed := MAX_SPEED_BASE
+var dig_rate := DIG_RATE_BASE
+var fuel_max := FUEL_MAX_BASE
+var o2_max := O2_MAX_BASE
+var fuel_thrust_drain := FUEL_THRUST_DRAIN_BASE
+var can_wall_grip := false
+
+var fuel := FUEL_MAX_BASE
+var o2 := O2_MAX_BASE
 var cargo_gold := 0
 var cargo_nickel := 0
 var cargo_fuel_ore := 0
@@ -116,19 +130,37 @@ func _physics_process(delta: float) -> void:
         facing_angle = input_dir.angle()
     rotation = facing_angle
 
+    # Wall Grip (upgrade): once unlocked, holding a direction INTO whatever
+    # solid surface the ship is already touching anchors it there -- no
+    # gravity, no drift, no fuel burned just to hold position while digging
+    # into a wall/ceiling with no floor below. is_on_wall()/is_on_ceiling()
+    # reflect LAST frame's move_and_slide() result, checked here before this
+    # frame's move_and_slide() runs -- the standard Godot coyote-check idiom.
+    # Gating on current input pointing into the collision normal (not just
+    # contact) is what makes detaching automatic: the moment input goes
+    # neutral or points away, this falls straight through to normal physics.
+    var gripped := can_wall_grip and (is_on_wall() or is_on_ceiling())
+    var pushing_into_grip := false
+    if gripped and input_dir != Vector2.ZERO:
+        var col := get_last_slide_collision()
+        if col != null and input_dir.normalized().dot(col.get_normal()) < -0.1:
+            pushing_into_grip = true
+
     var thrust_active := false
-    if fuel > 0.0:
+    if pushing_into_grip:
+        velocity = velocity.move_toward(Vector2.ZERO, FRICTION * delta)
+    elif fuel > 0.0:
         if input_dir.x != 0.0:
-            velocity.x = move_toward(velocity.x, input_dir.x * MAX_SPEED, SIDE_ACCEL * delta)
+            velocity.x = move_toward(velocity.x, input_dir.x * max_speed, side_accel * delta)
             thrust_active = true
         else:
             velocity.x = move_toward(velocity.x, 0.0, FRICTION * delta)
 
         if input_dir.y < 0.0:
-            velocity.y = move_toward(velocity.y, -MAX_SPEED, THRUST_ACCEL * delta)
+            velocity.y = move_toward(velocity.y, -max_speed, thrust_accel * delta)
             thrust_active = true
         elif input_dir.y > 0.0:
-            velocity.y = move_toward(velocity.y, MAX_SPEED * 0.8, DOWN_THRUST_ACCEL * delta)
+            velocity.y = move_toward(velocity.y, max_speed * 0.8, down_thrust_accel * delta)
             thrust_active = true
         else:
             velocity.y += GRAVITY * delta
@@ -136,7 +168,7 @@ func _physics_process(delta: float) -> void:
         velocity.x = move_toward(velocity.x, 0.0, FRICTION * delta)
         velocity.y += GRAVITY * delta
 
-    velocity.y = clamp(velocity.y, -MAX_SPEED, MAX_SPEED * 1.4)
+    velocity.y = clamp(velocity.y, -max_speed, max_speed * 1.4)
     flame_poly.visible = thrust_active
 
     if thrust_active and not docked and not thruster_player.playing:
@@ -152,8 +184,8 @@ func _physics_process(delta: float) -> void:
     _tick_resources(delta, thrust_active)
 
     if docked:
-        o2 = min(O2_MAX, o2 + DOCK_REFILL_RATE * delta)
-        fuel = min(FUEL_MAX, fuel + DOCK_REFILL_RATE * delta)
+        o2 = min(o2_max, o2 + DOCK_REFILL_RATE * delta)
+        fuel = min(fuel_max, fuel + DOCK_REFILL_RATE * delta)
     elif o2 <= 0.0:
         hit_by_hazard("ran out of oxygen")
 
@@ -195,7 +227,7 @@ func _handle_digging(input_dir: Vector2, delta: float) -> bool:
         dig_target = cell
         dig_progress = 0.0
 
-    var rate := DIG_RATE
+    var rate := dig_rate
     if terrain.get_tile(cell) == Constants.Tile.CRACKED:
         rate *= DIG_RATE_CRACKED_MULT
     dig_progress += rate * delta
@@ -227,9 +259,9 @@ func _tick_resources(delta: float, thrust_active: bool) -> void:
     if heat_drain > 0.0:
         o2 -= heat_drain * delta
     if thrust_active:
-        fuel = max(0.0, fuel - FUEL_THRUST_DRAIN * delta)
-    o2 = clamp(o2, 0.0, O2_MAX)
-    fuel = clamp(fuel, 0.0, FUEL_MAX)
+        fuel = max(0.0, fuel - fuel_thrust_drain * delta)
+    o2 = clamp(o2, 0.0, o2_max)
+    fuel = clamp(fuel, 0.0, fuel_max)
 
 func set_docked(is_docked: bool) -> void:
     var was_docked := docked
@@ -262,8 +294,8 @@ func respawn_at(spawn_pos: Vector2) -> void:
     rotation = 0.0
     facing_angle = 0.0
     velocity = Vector2.ZERO
-    fuel = FUEL_MAX
-    o2 = O2_MAX
+    fuel = fuel_max
+    o2 = o2_max
     heat_drain = 0.0
     cargo_gold = 0
     cargo_nickel = 0

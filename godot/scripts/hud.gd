@@ -19,6 +19,7 @@ var minimap_panel: PanelContainer
 var o2_bar: ProgressBar
 var fuel_bar: ProgressBar
 var level_label: Label
+var lives_label: Label
 var quota_label: Label
 var cargo_label: Label
 var depth_label: Label
@@ -33,6 +34,11 @@ var title_card_box: PanelContainer
 var title_main_label: Label
 var title_sub_label: Label
 
+var upgrade_toast_box: PanelContainer
+var upgrade_toast_name_label: Label
+var upgrade_toast_desc_label: Label
+var _upgrade_toast_tween: Tween
+
 var fade_rect: ColorRect
 
 func _ready() -> void:
@@ -41,6 +47,7 @@ func _ready() -> void:
     _build_controls_panel()
     _build_minimap_panel()
     _build_title_card()
+    _build_upgrade_toast()
     _build_game_over_panel()
     _build_fade_overlay()
 
@@ -81,6 +88,9 @@ func _build_stats_panel() -> void:
 
     level_label = _label("LEVEL 1 -- Ashfall Rubble", Color(0.75, 0.85, 1.0), 15)
     vbox.add_child(level_label)
+
+    lives_label = _label("LIVES 3", Color(1.0, 0.75, 0.75))
+    vbox.add_child(lives_label)
 
     quota_label = _label("Fuel ore banked 0 / 6", Color(0.6, 0.95, 0.75))
     vbox.add_child(quota_label)
@@ -173,6 +183,48 @@ func _build_title_card() -> void:
     _anchor_panel(title_card_box, Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE)
     title_card_box.visible = false
 
+# Separate panel from title_card_box on purpose -- a score-threshold
+# upgrade grant can fire while a level-transition title card is showing
+# (both are triggered from cargo-banking/level-advance in main.gd), and
+# sharing one node would mean the two fight over its visibility/timing.
+func _build_upgrade_toast() -> void:
+    upgrade_toast_box = _make_panel()
+    var vbox := VBoxContainer.new()
+    vbox.add_theme_constant_override("separation", 4)
+    upgrade_toast_box.add_child(vbox)
+
+    var header := _label("UPGRADE UNLOCKED", Color(0.6, 0.95, 0.75), 13)
+    header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    vbox.add_child(header)
+
+    upgrade_toast_name_label = _label("", Color(1, 1, 1), 20)
+    upgrade_toast_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    vbox.add_child(upgrade_toast_name_label)
+
+    upgrade_toast_desc_label = _label("", Color(1, 1, 1, 0.75), 13)
+    upgrade_toast_desc_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    vbox.add_child(upgrade_toast_desc_label)
+
+    _anchor_panel(upgrade_toast_box, Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE)
+    upgrade_toast_box.visible = false
+
+func show_upgrade_toast(name: String, desc: String = "") -> void:
+    upgrade_toast_name_label.text = name
+    upgrade_toast_desc_label.text = desc
+    upgrade_toast_box.visible = true
+    upgrade_toast_box.modulate.a = 1.0
+    if _upgrade_toast_tween and _upgrade_toast_tween.is_valid():
+        _upgrade_toast_tween.kill()
+    _upgrade_toast_tween = create_tween()
+    _upgrade_toast_tween.tween_interval(2.2)
+    _upgrade_toast_tween.tween_property(upgrade_toast_box, "modulate:a", 0.0, 0.5)
+    _upgrade_toast_tween.tween_callback(func(): upgrade_toast_box.visible = false)
+
+func hide_upgrade_toast() -> void:
+    if _upgrade_toast_tween and _upgrade_toast_tween.is_valid():
+        _upgrade_toast_tween.kill()
+    upgrade_toast_box.visible = false
+
 func _build_game_over_panel() -> void:
     var center := CenterContainer.new()
     center.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -215,7 +267,7 @@ func set_gameplay_panels_visible(v: bool) -> void:
     minimap_panel.visible = v
 
 func update_stats(
-    o2: float, fuel: float,
+    o2: float, fuel: float, lives: int,
     cargo_gold: int, cargo_nickel: int, cargo_fuel_ore: int, cargo_credit: int,
     banked_score: int, depth_m: int,
     level_name: String, level_number: int,
@@ -224,6 +276,7 @@ func update_stats(
     o2_bar.value = o2
     fuel_bar.value = fuel
     level_label.text = "LEVEL %d -- %s" % [level_number, level_name]
+    lives_label.text = "LIVES %d" % lives
     quota_label.text = "Fuel ore banked %d / %d" % [fuel_ore_banked, fuel_ore_quota]
     cargo_label.text = "CARGO   %d gold  %d nickel  %d fuel ore  (%d cr held)" % [cargo_gold, cargo_nickel, cargo_fuel_ore, cargo_credit]
     depth_label.text = "DEPTH   %dm      BANKED  %d cr" % [depth_m, banked_score]
@@ -231,10 +284,11 @@ func update_stats(
 func update_minimap(progress: float, depth_m: int, max_depth_m: int, fuel_ore_banked: int, fuel_ore_quota: int) -> void:
     minimap.set_progress(progress, "%dm / %dm" % [depth_m, max_depth_m], "Fuel ore %d/%d" % [fuel_ore_banked, fuel_ore_quota])
 
-func show_game_over(reason: String, score: int, depth_m: int) -> void:
+func show_game_over(reason: String, score: int, depth_m: int, lives_remaining: int) -> void:
     message_label.text = "RUN OVER"
     message_label.add_theme_color_override("font_color", Color(1, 0.4, 0.35))
-    sub_label.text = "%s\n\nBanked %d credits this level   |   reached %dm deep\n\nPress R to try again" % [reason, score, depth_m]
+    var lives_word := "life" if lives_remaining == 1 else "lives"
+    sub_label.text = "%s\n\nBanked %d credits this level   |   reached %dm deep\n\n%d %s remaining\n\nPress R to try again" % [reason, score, depth_m, lives_remaining, lives_word]
     game_over_box.visible = true
 
 func hide_game_over() -> void:
