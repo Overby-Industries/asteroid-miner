@@ -23,7 +23,7 @@ func _ready() -> void:
     add_child(shape)
 
     flame_poly = Polygon2D.new()
-    flame_poly.color = Color(1.0, 0.6, 0.2, 0.85)
+    flame_poly.color = Color(0.21, 0.64, 0.88, 0.85)  # engine-glow blue, sampled from public/asteroid-miner.png
     flame_poly.polygon = PackedVector2Array([
         Vector2(-22, 27), Vector2(22, 27), Vector2(0, 70),
     ])

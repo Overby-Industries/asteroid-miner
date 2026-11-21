@@ -107,7 +107,7 @@ func _ready() -> void:
     add_child(drill_poly)
 
     flame_poly = Polygon2D.new()
-    flame_poly.color = Color(1.0, 0.65, 0.2, 0.9)
+    flame_poly.color = Color(0.21, 0.64, 0.88, 0.9)  # engine-glow blue, sampled from public/asteroid-miner.png
     flame_poly.polygon = PackedVector2Array([Vector2(-11, -6), Vector2(-19, 0), Vector2(-11, 6)])
     flame_poly.visible = false
     add_child(flame_poly)

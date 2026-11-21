@@ -14,13 +14,21 @@ state at any point.
   Blender's render settings).
 - **Engine**: Cycles or Eevee, either is fine -- this is a still render, not
   realtime.
-- **Resolution**: doesn't need to match final on-screen size. Render big
-  (e.g. 1024px on the long edge) for quality; the game scales the image
-  down to the object's gameplay size automatically (see `HULL_SPRITE_SIZE`
-  in each script). What matters is **canvas aspect ratio** -- match the
-  "target box" aspect ratio listed per object below, padding the shorter
-  side with transparent space if your model doesn't fill it, or the image
-  will stretch when the game scales it to fit.
+- **Resolution**: the game scales the image to the object's gameplay size
+  automatically (see `HULL_SPRITE_SIZE` in each script), but the size you
+  drop in matters. Render big, then **reduce the PNG you drop in to 4x the
+  target box** (104 x 80 for the 26 x 20 player ship, 400 x 232 for the
+  100 x 58 mothership). Godot's default import has no mipmaps, so a texture
+  much larger than that is point-sampled when drawn small and shimmers,
+  worst on the rotating player ship. 4x is twice the on-screen size at the
+  2x gameplay zoom. Measured in a real render at that zoom against an ideal
+  area-averaged picture (mean error on a 0-255 scale, over 12 rotations):
+  3.5 for a 4x texture, 9.3 for 8x, 13.8 for a 1300 px render. Reduce with
+  alpha-aware (premultiplied) resampling so edges carry no halo. Also
+  **canvas aspect ratio** matters -- match the "target box" aspect ratio
+  listed per object below, padding the shorter side with transparent space
+  if your model doesn't fill it, or the image will stretch when the game
+  scales it to fit.
 - **Camera angle -- read this before modeling**: it depends on whether the
   object rotates at runtime.
   - The **player ship rotates freely in 2D** to face travel direction
@@ -44,7 +52,8 @@ state at any point.
 
 World units line up with the terrain grid: `Constants.CELL_SIZE = 32px`, so
 1 world unit = 1px at the game's native (non-zoomed) scale. The gameplay
-camera runs at 2x zoom, so render with enough resolution to hold up there.
+camera runs at 2x zoom, so a 4x texture is twice its on-screen size there,
+enough to hold up without shimmer.
 
 Model the subject centered on the origin, nose/front pointing **+X**
 (rightward) in the render, since that's the ship's forward axis in-game.
